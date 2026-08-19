@@ -7,12 +7,15 @@ import {
 import { groundHeightAt, resolveCircle, spawnPoints } from './world.js';
 import { puff } from './effects.js';
 
-const ACCEL = 26;
+const ACCEL = 30;
 const BRAKE = 34;
 const FRICTION = 10;
-const MAX_SPEED = 21;
+export const MAX_SPEED = 22;
 const MAX_REVERSE = -8;
-const TURN_RATE = 2.5;
+const TURN_RATE_LOW = 3.0;   // draaisnelheid bij lage snelheid
+const TURN_RATE_HIGH = 1.85; // bij topsnelheid: ruimere bochten
+const GRIP_NORMAL = 10;      // demping van zijwaartse slip
+const GRIP_DRIFT = 3.2;      // bij hard insturen op snelheid: drift
 const GRAVITY = 28;
 
 function makeLabel(name) {
@@ -122,8 +125,11 @@ export class Kart {
     scene.add(grp);
 
     this.pos = new THREE.Vector3();
-    this.heading = 0;        // yaw, 0 = richting -z? nee: forward = (sin, 0, cos)*-1... zie forward()
-    this.speed = 0;
+    this.heading = 0;        // yaw; forward = (sin, 0, cos)
+    this.vel = new THREE.Vector3();  // horizontale snelheid in wereldruimte
+    this.speed = 0;          // voorwaartse component van vel (voor bots/visuals)
+    this.steer = 0;          // gladgestreken stuurinput
+    this.drifting = false;
     this.vy = 0;
     this.airborne = false;
     this.knock = new THREE.Vector3();
@@ -166,7 +172,8 @@ export class Kart {
     }
     this.pos.set(best.x + rand(-2, 2), 0, best.z + rand(-2, 2));
     this.heading = Math.atan2(-this.pos.x, -this.pos.z); // kijk naar het midden
-    this.speed = 0; this.vy = 0;
+    this.speed = 0; this.vy = 0; this.steer = 0;
+    this.vel.set(0, 0, 0);
     this.knock.set(0, 0, 0);
     this.hp = MAX_HP;
     this.dead = false;
@@ -180,43 +187,66 @@ export class Kart {
 
     const c = this.ctrl;
 
-    // --- snelheid ---
+    // --- stuurinput gladstrijken (geen binair geschok bij toetsenbord) ---
+    this.steer = lerp(this.steer, c.steer, Math.min(1, 9 * dt));
+
+    // --- sturen: draaicirkel schaalt met snelheid, omgekeerd bij achteruit ---
+    const spFactor = clamp(Math.abs(this.speed) / 7, 0, 1);
+    const spNorm = clamp(Math.abs(this.speed) / MAX_SPEED, 0, 1);
+    const turnRate = lerp(TURN_RATE_LOW, TURN_RATE_HIGH, spNorm);
+    const dir = this.speed >= 0 ? 1 : -1;
+    const airFactor = this.airborne ? 0.25 : 1; // beetje luchtcontrole
+    this.heading -= this.steer * turnRate * spFactor * dir * airFactor * dt;
+
+    // --- snelheid ontbinden in voorwaarts + zijwaarts (slip) ---
+    const fwd = this.forward();
+    const side = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    let vF = this.vel.x * fwd.x + this.vel.z * fwd.z;
+    let vS = this.vel.x * side.x + this.vel.z * side.z;
+
+    // --- motor & rem werken op de voorwaartse component ---
     const shieldBoost = now < this.shieldUntil ? 1.18 : 1;
     const maxSp = MAX_SPEED * shieldBoost;
-    if (c.throttle > 0) {
-      this.speed += ACCEL * c.throttle * dt;
-    } else if (c.throttle < 0) {
-      this.speed += (this.speed > 0 ? -BRAKE : ACCEL * c.throttle) * dt;
-    } else {
-      // uitrollen
-      const f = FRICTION * dt;
-      if (Math.abs(this.speed) <= f) this.speed = 0;
-      else this.speed -= Math.sign(this.speed) * f;
-    }
-    this.speed = clamp(this.speed, MAX_REVERSE, maxSp);
-
-    // --- sturen (schaalt met snelheid, omgekeerd bij achteruit) ---
-    const spFactor = clamp(Math.abs(this.speed) / 7, 0, 1);
-    const dir = this.speed >= 0 ? 1 : -1;
     if (!this.airborne) {
-      this.heading -= c.steer * TURN_RATE * spFactor * dir * dt;
+      if (c.throttle > 0) {
+        // pittige start, aflopend richting topsnelheid
+        const headroom = 1 - clamp(Math.max(0, vF) / maxSp, 0, 1);
+        vF += ACCEL * c.throttle * (0.35 + 0.65 * headroom) * dt;
+      } else if (c.throttle < 0) {
+        vF += (vF > 0 ? -BRAKE : ACCEL * c.throttle) * dt;
+      } else {
+        const f = FRICTION * dt;
+        if (Math.abs(vF) <= f) vF = 0;
+        else vF -= Math.sign(vF) * f;
+      }
     }
+    vF = clamp(vF, MAX_REVERSE, maxSp);
+
+    // --- grip: zijwaartse slip wegdempen, minder bij drift/in de lucht ---
+    const wantsDrift = Math.abs(this.steer) > 0.5 && vF > 13;
+    const grip = this.airborne ? 0.4 : (wantsDrift ? GRIP_DRIFT : GRIP_NORMAL);
+    vS *= Math.exp(-grip * dt);
+    this.drifting = !this.airborne && Math.abs(vS) > 2.5;
+
+    this.vel.set(fwd.x * vF + side.x * vS, 0, fwd.z * vF + side.z * vS);
+    this.speed = vF;
 
     // --- beweging ---
-    const fwd = this.forward();
-    const nx = this.pos.x + (fwd.x * this.speed + this.knock.x) * dt;
-    const nz = this.pos.z + (fwd.z * this.speed + this.knock.z) * dt;
-
     const prevX = this.pos.x, prevZ = this.pos.z;
+    const nx = prevX + (this.vel.x + this.knock.x) * dt;
+    const nz = prevZ + (this.vel.z + this.knock.z) * dt;
+    const intended = Math.hypot(nx - prevX, nz - prevZ);
+
     this.pos.x = nx; this.pos.z = nz;
     const hitWall = resolveCircle(this.pos, KART_RADIUS, this.pos.y);
     if (hitWall) {
-      // botsdemping
-      this.speed *= 0.45;
+      // schampen kost weinig snelheid, frontaal knallen veel
+      const actual = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);
+      const keep = intended > 0.0001 ? clamp(actual / intended, 0, 1) : 0;
+      const damp = 0.35 + 0.6 * keep;
+      this.vel.multiplyScalar(damp);
+      this.speed *= damp;
       this.knock.multiplyScalar(0.4);
-      if (Math.hypot(this.pos.x - prevX, this.pos.z - prevZ) < 0.001) {
-        this.speed = 0;
-      }
     }
 
     // knockback dempen
@@ -259,8 +289,9 @@ export class Kart {
     // --- visuals ---
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.heading;
-    // kart kantelt lichtjes in bochten
-    this.mesh.rotation.z = lerp(this.mesh.rotation.z, -c.steer * spFactor * 0.12, 10 * dt);
+    // kart kantelt in bochten, extra bij drift
+    const tilt = -this.steer * spFactor * (this.drifting ? 0.2 : 0.12);
+    this.mesh.rotation.z = lerp(this.mesh.rotation.z, tilt, 10 * dt);
     for (const w of this.wheels) w.rotation.x += this.speed * dt * 2.2;
 
     // blob-schaduw op de grond houden
@@ -278,10 +309,12 @@ export class Kart {
       this.mesh.visible = true;
     }
 
-    // stofwolkjes bij scherpe bochten op snelheid
+    // stofwolkjes bij drift of scherpe bochten op snelheid
     this.dustTimer -= dt;
-    if (!this.airborne && Math.abs(c.steer) > 0.55 && Math.abs(this.speed) > 12 && this.dustTimer <= 0) {
-      this.dustTimer = 0.05;
+    const kickingUpDust = this.drifting ||
+      (Math.abs(this.steer) > 0.55 && Math.abs(this.speed) > 12);
+    if (!this.airborne && kickingUpDust && this.dustTimer <= 0) {
+      this.dustTimer = this.drifting ? 0.03 : 0.05;
       const side = fwd.clone().cross(new THREE.Vector3(0, 1, 0));
       puff(
         this.pos.x - fwd.x * 1 + side.x * rand(-0.6, 0.6),
@@ -313,7 +346,7 @@ export function collideKarts(karts) {
         const rel = a.speed - b.speed;
         a.knock.x -= nx * Math.abs(rel) * 0.4; a.knock.z -= nz * Math.abs(rel) * 0.4;
         b.knock.x += nx * Math.abs(rel) * 0.4; b.knock.z += nz * Math.abs(rel) * 0.4;
-        a.speed *= 0.85; b.speed *= 0.85;
+        a.vel.multiplyScalar(0.85); b.vel.multiplyScalar(0.85);
       }
     }
   }

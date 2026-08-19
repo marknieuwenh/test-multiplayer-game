@@ -4,12 +4,12 @@ import * as THREE from 'three';
 import { MATCH_TIME, rand, lerp, clamp } from './util.js';
 import { buildWorld } from './world.js';
 import { initEffects, updateEffects, shake } from './effects.js';
-import { Kart, collideKarts } from './kart.js';
+import { Kart, collideKarts, MAX_SPEED } from './kart.js';
 import { ItemManager } from './items.js';
 import { BotBrain, makeBotRoster } from './bots.js';
 import { initInput, updateInput, input } from './input.js';
 import * as hud from './hud.js';
-import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
+import { sfx, unlockAudio, setMuted, isMuted, updateEngine } from './audio.js';
 
 const BOT_COUNT = 7;
 const KART_COLORS = [
@@ -102,6 +102,7 @@ function updateCamera(dt) {
   const me = state.me;
   if (state.running && me) {
     const fwd = me.forward();
+    const side = new THREE.Vector3(fwd.z, 0, -fwd.x);
     const targetPos = new THREE.Vector3(
       me.pos.x - fwd.x * 7.6,
       me.pos.y + 4.4,
@@ -109,15 +110,27 @@ function updateCamera(dt) {
     );
     const t = 1 - Math.exp(-6 * dt);
     camPos.lerp(targetPos, t);
+    // kijkpunt schuift de bocht in (steer + is naar -side)
+    const lookAside = -me.steer * 1.4;
     camLook.lerp(
-      new THREE.Vector3(me.pos.x + fwd.x * 3, me.pos.y + 1.4, me.pos.z + fwd.z * 3),
+      new THREE.Vector3(
+        me.pos.x + fwd.x * 3 + side.x * lookAside,
+        me.pos.y + 1.4,
+        me.pos.z + fwd.z * 3 + side.z * lookAside
+      ),
       Math.min(1, t * 1.4)
     );
+    // FOV rekt mee met snelheid voor extra vaart-gevoel
+    const targetFov = 60 + 13 * clamp(me.speed / MAX_SPEED, 0, 1);
+    camera.fov = lerp(camera.fov, targetFov, Math.min(1, 5 * dt));
+    camera.updateProjectionMatrix();
   } else {
     // idle: langzaam om de arena heen draaien (startscherm / einde)
     const a = performance.now() * 0.00012;
     camPos.lerp(new THREE.Vector3(Math.sin(a) * 55, 26, Math.cos(a) * 55), 0.05);
     camLook.lerp(new THREE.Vector3(0, 2, 0), 0.05);
+    camera.fov = lerp(camera.fov, 62, Math.min(1, 5 * dt));
+    camera.updateProjectionMatrix();
   }
 
   camera.position.copy(camPos);
@@ -217,6 +230,13 @@ function frame(nowMs) {
       hud.updateItemIcon(me);
     }
   }
+
+  // motorgeluid volgt de snelheid van de speler
+  updateEngine(
+    state.running && state.me && !state.me.dead
+      ? clamp(Math.abs(state.me.speed) / MAX_SPEED, 0, 1)
+      : 0
+  );
 
   updateEffects(dt);
   updateCamera(dt);

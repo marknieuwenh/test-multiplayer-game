@@ -130,6 +130,13 @@ html, body {
 #touch { position: absolute; inset: 0; pointer-events: none; display: none; }
 body.touchmode #touch { display: block; }
 
+#joyzone {
+  /* de hele linkerhelft is stuurzone: de joystick verschijnt waar je hem aanraakt */
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 50%;
+  pointer-events: auto;
+}
 #joystick {
   position: absolute;
   left: max(24px, env(safe-area-inset-left));
@@ -138,8 +145,10 @@ body.touchmode #touch { display: block; }
   border-radius: 50%;
   background: rgba(255,255,255,.22);
   border: 3px solid rgba(255,255,255,.5);
-  pointer-events: auto;
+  pointer-events: none;
+  transition: opacity .15s;
 }
+#joystick.idle { opacity: .45; }
 #joyknob {
   position: absolute; left: 50%; top: 50%;
   width: 58px; height: 58px;

@@ -72,6 +72,33 @@ function playTone(type, f0, f1, peak, decay) {
   osc.stop(t0 + decay + 0.05);
 }
 
+// -------- motorgeluid --------
+// Doorlopende zaagtand-oscillator waarvan toonhoogte en volume met de
+// snelheid van de speler meelopen.
+let engine = null;
+
+export function updateEngine(rpm01) {
+  if (!ctx) return; // pas na eerste user-gesture
+  if (!engine) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 55;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.value = 320;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    osc.connect(filt).connect(g).connect(master);
+    osc.start();
+    engine = { osc, g, filt };
+  }
+  const t = ctx.currentTime;
+  // setTargetAtTime voorkomt klikken/zipperen
+  engine.osc.frequency.setTargetAtTime(55 + rpm01 * 135, t, 0.08);
+  engine.filt.frequency.setTargetAtTime(280 + rpm01 * 500, t, 0.1);
+  engine.g.gain.setTargetAtTime(rpm01 > 0.02 ? 0.045 + rpm01 * 0.075 : 0, t, 0.1);
+}
+
 export const sfx = {
   shoot()     { playTone('square', 660, 180, 0.12, 0.08); },
   rocket()    { playNoise(0.3, 0.5, 2400, 2); playTone('sawtooth', 140, 40, 0.15, 0.5); },

@@ -39,13 +39,19 @@ function readKeyboard() {
   return { steer, throttle, fire: keys.has('Space') };
 }
 
-// -------- joystick --------
-const joy = { active: false, id: null, x: 0, y: 0 };
+// -------- floating joystick --------
+// De hele linkerhelft van het scherm is stuurzone; de joystick springt naar de
+// plek waar je hem aanraakt, zodat je nooit "mis" grijpt.
+const joy = { active: false, id: null, x: 0, y: 0, cx: 0, cy: 0 };
+const JOY_RADIUS = 52;
 
 function setupJoystick() {
+  const zone = document.getElementById('joyzone');
   const el = document.getElementById('joystick');
   const knob = document.getElementById('joyknob');
-  if (!el) return;
+  if (!zone || !el) return;
+
+  el.classList.add('idle');
 
   const setKnob = () => {
     knob.style.transform =
@@ -53,32 +59,40 @@ function setupJoystick() {
   };
 
   const update = (e) => {
-    const r = el.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    let dx = (e.clientX - cx) / (r.width / 2);
-    let dy = (e.clientY - cy) / (r.height / 2);
+    let dx = (e.clientX - joy.cx) / JOY_RADIUS;
+    let dy = (e.clientY - joy.cy) / JOY_RADIUS;
     const len = Math.hypot(dx, dy);
     if (len > 1) { dx /= len; dy /= len; }
     joy.x = dx; joy.y = dy;
     setKnob();
   };
 
-  el.addEventListener('pointerdown', (e) => {
+  zone.addEventListener('pointerdown', (e) => {
     unlockAudio();
     joy.active = true; joy.id = e.pointerId;
-    el.setPointerCapture(e.pointerId);
+    joy.cx = e.clientX; joy.cy = e.clientY;
+    // basis verplaatsen naar de aanraakplek
+    el.style.left = `${e.clientX - 64}px`;
+    el.style.top = `${e.clientY - 64}px`;
+    el.style.bottom = 'auto';
+    el.classList.remove('idle');
+    try { zone.setPointerCapture(e.pointerId); } catch { /* geen actieve pointer */ }
     update(e);
+    e.preventDefault();
   });
-  el.addEventListener('pointermove', (e) => {
+  zone.addEventListener('pointermove', (e) => {
     if (joy.active && e.pointerId === joy.id) update(e);
   });
   const end = (e) => {
     if (e.pointerId !== joy.id) return;
     joy.active = false; joy.id = null; joy.x = 0; joy.y = 0;
     setKnob();
+    // terug naar de rustplek linksonder
+    el.style.left = ''; el.style.top = ''; el.style.bottom = '';
+    el.classList.add('idle');
   };
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
+  zone.addEventListener('pointerup', end);
+  zone.addEventListener('pointercancel', end);
 }
 
 // -------- vuurknop --------
@@ -90,7 +104,7 @@ function setupFireButton() {
   el.addEventListener('pointerdown', (e) => {
     unlockAudio();
     firePressed = true;
-    el.setPointerCapture(e.pointerId);
+    try { el.setPointerCapture(e.pointerId); } catch { /* geen actieve pointer */ }
     e.preventDefault();
   });
   const end = () => { firePressed = false; };
@@ -108,7 +122,10 @@ export function updateInput() {
 
   if (input.touchMode) {
     if (joy.active) {
-      steer += joy.x;
+      // progressieve stuurcurve: fijn rond het midden, vol aan de rand
+      const jx = Math.abs(joy.x) < 0.08 ? 0
+        : Math.sign(joy.x) * Math.pow(Math.abs(joy.x), 1.4);
+      steer += jx;
       // omlaag duwen = remmen/achteruit, anders automatisch gas
       throttle += joy.y > 0.45 ? -1 : 1;
     } else if (!kb.throttle && !kb.steer) {

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Smash Karts Arena</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎️</text></svg>">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="game">
+  <canvas id="c"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="leaderboard"></div>
+
+    <div id="topcenter">
+      <div id="healthwrap" title="Levens">
+        <span class="heart">&#10084;</span>
+        <div id="healthbar"><div id="healthfill"></div></div>
+      </div>
+      <div id="timerwrap">
+        <span class="clock">&#9200;</span>
+        <span id="timer">180</span>
+      </div>
+    </div>
+
+    <div id="topright">
+      <div id="fps">FPS: --</div>
+      <button id="mute" class="iconbtn" aria-label="Geluid aan/uit">&#128266;</button>
+    </div>
+
+    <div id="killfeed"></div>
+    <div id="announce"></div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touch">
+    <div id="joystick">
+      <div id="joyknob"></div>
+    </div>
+    <div id="firebtn"><span id="itemicon"></span></div>
+  </div>
+
+  <!-- Start / einde overlays -->
+  <div id="overlay">
+    <div class="panel" id="startpanel">
+      <h1>SMASH KARTS ARENA</h1>
+      <p class="sub">Pak <b>?</b>-boxen, schakel de rest uit met power-ups!</p>
+      <input id="nameinput" maxlength="14" placeholder="Jouw naam" autocomplete="off">
+      <button id="startbtn">SPELEN</button>
+      <p class="help">
+        <b>Desktop:</b> pijltjes / WASD rijden &middot; spatie = schieten<br>
+        <b>Mobiel:</b> joystick links sturen &middot; grote knop rechts = schieten
+      </p>
+    </div>
+    <div class="panel hidden" id="endpanel">
+      <h1 id="endtitle">EINDE!</h1>
+      <div id="endboard"></div>
+      <button id="restartbtn">OPNIEUW</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -14,9 +14,40 @@ export const input = {
 
 const keys = new Set();
 
+// Blokkeert browser-gestures (scrollen, dubbeltik-zoom, pinch-zoom) die het
+// spel in de weg zitten. CSS touch-action vangt het meeste af; dit is de
+// vangrail voor browsers die dat (deels) negeren, zoals iOS Safari.
+function blockBrowserGestures() {
+  // swipe-scrollen en pinch-pannen
+  document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+  // dubbeltik-zoom: tweede tik binnen 350 ms afvangen
+  // (het naamveld uitgezonderd, zodat tekst selecteren blijft werken)
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd < 350 && !(e.target instanceof HTMLInputElement)) {
+      e.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, { passive: false });
+
+  // dubbelklik-zoom/-selectie op desktop en hybride apparaten
+  document.addEventListener('dblclick', (e) => e.preventDefault());
+
+  // pinch-zoom gestures in iOS Safari (negeert user-scalable=no sinds iOS 10)
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(ev, (e) => e.preventDefault());
+  }
+
+  // ctrl+scroll browser-zoom op desktop
+  document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+}
+
 export function initInput() {
   input.touchMode = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   if (input.touchMode) document.body.classList.add('touchmode');
+  blockBrowserGestures();
 
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;

@@ -15,7 +15,7 @@ const MAX_REVERSE = -8;
 const TURN_RATE_LOW = 3.0;   // draaisnelheid bij lage snelheid
 const TURN_RATE_HIGH = 1.85; // bij topsnelheid: ruimere bochten
 const GRIP_NORMAL = 10;      // demping van zijwaartse slip
-const GRIP_DRIFT = 3.2;      // bij hard insturen op snelheid: drift
+const GRIP_DRIFT = 4.6;      // bij hard insturen op snelheid: drift
 const GRAVITY = 28;
 
 function makeLabel(name) {
@@ -36,6 +36,99 @@ function makeLabel(name) {
   sp.scale.set(3.4, 0.85, 1);
   sp.position.y = 2.6;
   return sp;
+}
+
+// ---------- gezichten ----------
+// Elke bestuurder is een platte ronde disc met een gezichtstexture. Standaard
+// tekenen we zelf een gezichtje; via setKartFace() kan een externe afbeelding
+// (bijv. een foto per speler vanuit het hoofdspel) worden ingeladen.
+
+const FACE_SIZE = 256;
+
+function drawFaceRing(g, color) {
+  // rand in de kartkleur
+  g.strokeStyle = color;
+  g.lineWidth = 18;
+  g.beginPath();
+  g.arc(FACE_SIZE / 2, FACE_SIZE / 2, FACE_SIZE / 2 - 10, 0, Math.PI * 2);
+  g.stroke();
+}
+
+function defaultFaceTexture(colorHex) {
+  const color = '#' + colorHex.toString(16).padStart(6, '0');
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = FACE_SIZE;
+  const g = cv.getContext('2d');
+  const c = FACE_SIZE / 2;
+  // gezicht
+  g.beginPath();
+  g.arc(c, c, c - 12, 0, Math.PI * 2);
+  g.fillStyle = '#f7cf9f';
+  g.fill();
+  // ogen
+  g.fillStyle = '#2b2b33';
+  for (const ox of [-42, 42]) {
+    g.beginPath();
+    g.ellipse(c + ox, c - 22, 15, 21, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  // glimmertjes in de ogen
+  g.fillStyle = '#fff';
+  for (const ox of [-36, 48]) {
+    g.beginPath();
+    g.arc(c + ox, c - 30, 6, 0, Math.PI * 2);
+    g.fill();
+  }
+  // mond
+  g.strokeStyle = '#8a4a2a';
+  g.lineWidth = 9;
+  g.lineCap = 'round';
+  g.beginPath();
+  g.arc(c, c + 26, 38, 0.25 * Math.PI, 0.75 * Math.PI);
+  g.stroke();
+  // blosjes
+  g.fillStyle = 'rgba(240, 130, 130, .5)';
+  for (const ox of [-62, 62]) {
+    g.beginPath();
+    g.arc(c + ox, c + 18, 14, 0, Math.PI * 2);
+    g.fill();
+  }
+  drawFaceRing(g, color);
+  return new THREE.CanvasTexture(cv);
+}
+
+// Laadt een afbeelding (url, HTMLImageElement of Canvas) als gezicht van een
+// kart: rond uitgesneden, met een rand in de kartkleur.
+export function setKartFace(kart, source) {
+  const apply = (img) => {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = FACE_SIZE;
+    const g = cv.getContext('2d');
+    const c = FACE_SIZE / 2;
+    g.save();
+    g.beginPath();
+    g.arc(c, c, c - 12, 0, Math.PI * 2);
+    g.clip();
+    // cover-fit: kortste zijde vult de cirkel
+    const s = Math.max(FACE_SIZE / img.width, FACE_SIZE / img.height);
+    const w = img.width * s, h = img.height * s;
+    g.drawImage(img, c - w / 2, c - h / 2, w, h);
+    g.restore();
+    drawFaceRing(g, '#' + kart.color.toString(16).padStart(6, '0'));
+    const tex = new THREE.CanvasTexture(cv);
+    const old = kart.faceSprite.material.map;
+    kart.faceSprite.material.map = tex;
+    kart.faceSprite.material.needsUpdate = true;
+    if (old) old.dispose();
+  };
+  if (typeof source === 'string') {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => apply(img);
+    img.src = source;
+  } else {
+    apply(source);
+  }
 }
 
 function buildKartMesh(color, showLabel, name) {
@@ -60,15 +153,16 @@ function buildKartMesh(color, showLabel, name) {
   seat.position.set(0, 1.0, 0.55);
   grp.add(seat);
 
-  // bestuurder (bolle kop + helm-kleur)
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), lam(0xf7c59f));
-  head.position.set(0, 1.35, 0.15);
-  grp.add(head);
-  const helmet = new THREE.Mesh(
-    new THREE.SphereGeometry(0.46, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), lam(color)
-  );
-  helmet.position.set(0, 1.42, 0.15);
-  grp.add(helmet);
+  // bestuurder: romp + platte ronde gezichts-disc (altijd naar de camera)
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.6, 0.45), lam(color));
+  torso.position.set(0, 1.05, 0.3);
+  grp.add(torso);
+  const faceSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: defaultFaceTexture(color),
+  }));
+  faceSprite.scale.set(1.25, 1.25, 1);
+  faceSprite.position.set(0, 1.75, 0.3);
+  grp.add(faceSprite);
 
   // wielen
   const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.35, 12);
@@ -103,9 +197,10 @@ function buildKartMesh(color, showLabel, name) {
   let label = null;
   if (showLabel) {
     label = makeLabel(name);
+    label.position.y = 2.9;
     grp.add(label);
   }
-  return { grp, wheels, shadow, bubble, body };
+  return { grp, wheels, shadow, bubble, body, faceSprite };
 }
 
 let nextId = 1;
@@ -117,11 +212,12 @@ export class Kart {
     this.color = color;
     this.isBot = isBot;
 
-    const { grp, wheels, shadow, bubble } = buildKartMesh(color, isBot, name);
+    const { grp, wheels, shadow, bubble, faceSprite } = buildKartMesh(color, isBot, name);
     this.mesh = grp;
     this.wheels = wheels;
     this.shadow = shadow;
     this.bubble = bubble;
+    this.faceSprite = faceSprite;
     scene.add(grp);
 
     this.pos = new THREE.Vector3();

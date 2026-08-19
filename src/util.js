@@ -1,6 +1,5 @@
 // Gedeelde helpers en constanten.
 
-export const ARENA_HALF = 58;          // halve breedte van de arena
 export const KART_RADIUS = 1.15;       // botsingscirkel van een kart
 export const MAX_HP = 6;
 export const MATCH_TIME = 180;         // seconden

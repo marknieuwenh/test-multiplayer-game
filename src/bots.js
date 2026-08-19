@@ -1,8 +1,8 @@
 // Bot-AI: rijdt naar item-boxen, jaagt op tegenstanders, ontwijkt muren
 // en vuurt met een beetje menselijke onnauwkeurigheid.
 
-import { rand, pick, clamp, angleDiff, dist2D, ARENA_HALF } from './util.js';
-import { isBlocked } from './world.js';
+import { rand, pick, clamp, angleDiff, dist2D } from './util.js';
+import { isBlocked, bounds } from './world.js';
 
 export const BOT_NAMES = [
   'ThunderTurbo', 'DriftCore', 'Frikandelbroodje', 'SirBotsalot',
@@ -53,8 +53,8 @@ export class BotBrain {
 
     // zwerfpunt
     this.target = {
-      x: rand(-ARENA_HALF + 8, ARENA_HALF - 8),
-      z: rand(-ARENA_HALF + 8, ARENA_HALF - 8),
+      x: rand(-bounds.hx + 8, bounds.hx - 8),
+      z: rand(-bounds.hz + 8, bounds.hz - 8),
     };
   }
 

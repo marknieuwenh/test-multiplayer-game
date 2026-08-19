@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Smash Karts Arena</title>
+<title>Kart Chaos</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎️</text></svg>">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
@@ -53,9 +53,14 @@
   <!-- Start / einde overlays -->
   <div id="overlay">
     <div class="panel" id="startpanel">
-      <h1>SMASH KARTS ARENA</h1>
+      <h1>KART CHAOS</h1>
       <p class="sub">Pak <b>?</b>-boxen, schakel de rest uit met power-ups!</p>
       <input id="nameinput" maxlength="14" placeholder="Jouw naam" autocomplete="off">
+      <div id="mapselect">
+        <button class="mapbtn" data-map="office"><span class="swatch sw-office"></span>Kantoor</button>
+        <button class="mapbtn" data-map="warehouse"><span class="swatch sw-warehouse"></span>Magazijn</button>
+        <button class="mapbtn" data-map="construction"><span class="swatch sw-construction"></span>Bouwplaats</button>
+      </div>
       <button id="startbtn">SPELEN</button>
       <p class="help">
         <b>Desktop:</b> pijltjes / WASD rijden &middot; spatie = schieten<br>
@@ -65,7 +70,10 @@
     <div class="panel hidden" id="endpanel">
       <h1 id="endtitle">EINDE!</h1>
       <div id="endboard"></div>
-      <button id="restartbtn">OPNIEUW</button>
+      <div class="btnrow">
+        <button id="restartbtn">OPNIEUW</button>
+        <button id="menubtn" class="secondary">MENU</button>
+      </div>
     </div>
   </div>
 </div>

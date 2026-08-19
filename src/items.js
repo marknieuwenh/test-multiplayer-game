@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import { KART_RADIUS, rand, pick, clamp, angleDiff, dist2D } from './util.js';
-import { itemBoxSpots, resolveCircle, groundHeightAt } from './world.js';
+import { resolveCircle, groundHeightAt } from './world.js';
 import { explosion, sparks, pickupBurst } from './effects.js';
 import { sfx } from './audio.js';
 
@@ -14,19 +14,19 @@ export const WEAPONS = {
 };
 const WEAPON_KEYS = ['gun', 'gun', 'rocket', 'rocket', 'mine', 'shield'];
 
-function questionTexture() {
+function questionTexture(style = { c1: '#ff5f6d', c2: '#ffc371', ink: '#ffffff' }) {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 128;
   const g = cv.getContext('2d');
   const grad = g.createLinearGradient(0, 0, 128, 128);
-  grad.addColorStop(0, '#ff5f6d');
-  grad.addColorStop(1, '#ffc371');
+  grad.addColorStop(0, style.c1);
+  grad.addColorStop(1, style.c2);
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
   g.strokeStyle = 'rgba(255,255,255,.9)';
   g.lineWidth = 10;
   g.strokeRect(5, 5, 118, 118);
-  g.fillStyle = '#fff';
+  g.fillStyle = style.ink;
   g.font = 'bold 84px "Trebuchet MS", sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -41,17 +41,7 @@ export class ItemManager {
     this.projectiles = [];
     this.mines = [];
     this.boxes = [];
-
-    const tex = questionTexture();
-    const boxGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
-    const boxMat = new THREE.MeshLambertMaterial({ map: tex });
-    for (const s of itemBoxSpots) {
-      const mesh = new THREE.Mesh(boxGeo, boxMat);
-      const y = groundHeightAt(s.x, s.z);
-      mesh.position.set(s.x, y + 1.1, s.z);
-      scene.add(mesh);
-      this.boxes.push({ mesh, x: s.x, z: s.z, baseY: y + 1.1, active: true, respawnAt: 0 });
-    }
+    this.boxGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
 
     this.bulletGeo = new THREE.SphereGeometry(0.22, 8, 6);
     this.bulletMat = new THREE.MeshBasicMaterial({ color: 0xffe36e });
@@ -59,6 +49,20 @@ export class ItemManager {
     this.rocketMat = new THREE.MeshLambertMaterial({ color: 0xf0463c });
     this.mineGeo = new THREE.SphereGeometry(0.5, 10, 8);
     this.mineMat = new THREE.MeshLambertMaterial({ color: 0x2b2f3a });
+  }
+
+  // Plaatst de ?-boxen voor de huidige map (aanroepen ná buildMap).
+  setBoxes(spots, style) {
+    for (const b of this.boxes) this.scene.remove(b.mesh);
+    this.boxes = [];
+    const boxMat = new THREE.MeshLambertMaterial({ map: questionTexture(style) });
+    for (const s of spots) {
+      const mesh = new THREE.Mesh(this.boxGeo, boxMat);
+      const y = groundHeightAt(s.x, s.z);
+      mesh.position.set(s.x, y + 1.1, s.z);
+      this.scene.add(mesh);
+      this.boxes.push({ mesh, x: s.x, z: s.z, baseY: y + 1.1, active: true, respawnAt: 0 });
+    }
   }
 
   reset() {

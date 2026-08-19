@@ -2,9 +2,10 @@
 
 import * as THREE from 'three';
 import { MATCH_TIME, rand, lerp, clamp } from './util.js';
-import { buildWorld } from './world.js';
+import { itemBoxSpots } from './world.js';
+import { MAPS, buildMap } from './maps.js';
 import { initEffects, updateEffects, shake } from './effects.js';
-import { Kart, collideKarts, MAX_SPEED } from './kart.js';
+import { Kart, collideKarts, setKartFace, MAX_SPEED } from './kart.js';
 import { ItemManager } from './items.js';
 import { BotBrain, makeBotRoster } from './bots.js';
 import { initInput, updateInput, input } from './input.js';
@@ -34,7 +35,6 @@ function onResize() {
 window.addEventListener('resize', onResize);
 onResize();
 
-buildWorld(scene);
 initEffects(scene);
 initInput();
 hud.initHud();
@@ -48,7 +48,14 @@ const state = {
   brains: [],
   me: null,
   gameTime: 0,
+  mapId: localStorage.getItem('sk_map') || 'office',
+  builtMapId: null,
 };
+if (!MAPS[state.mapId]) state.mapId = 'office';
+
+// startscherm toont alvast de gekozen map
+let mapCfg = buildMap(scene, state.mapId);
+state.builtMapId = state.mapId;
 
 const items = new ItemManager(scene, {
   onKill(victim, killer, weaponType) {
@@ -60,12 +67,20 @@ const items = new ItemManager(scene, {
     if (kart === state.me) hud.updateItemIcon(kart);
   },
 });
+items.setBoxes(itemBoxSpots, mapCfg.boxStyle);
 
 function setupMatch(playerName) {
   // oude karts opruimen
   for (const k of state.karts) scene.remove(k.mesh);
   state.karts = [];
   state.brains = [];
+
+  // gekozen map (her)bouwen
+  if (state.builtMapId !== state.mapId) {
+    mapCfg = buildMap(scene, state.mapId);
+    state.builtMapId = state.mapId;
+  }
+  items.setBoxes(itemBoxSpots, mapCfg.boxStyle);
   items.reset();
 
   const me = new Kart(scene, { name: playerName, color: KART_COLORS[0], isBot: false });
@@ -83,6 +98,8 @@ function setupMatch(playerName) {
 
   state.timeLeft = MATCH_TIME;
   state.countdown = 3.5;
+  // spawn-bescherming pas laten aflopen ná de countdown
+  for (const k of state.karts) k.invulnUntil = state.gameTime + state.countdown + 2.5;
   state.running = true;
   hud.updateItemIcon(me);
   hud.updateHealth(me);
@@ -261,6 +278,44 @@ document.getElementById('restartbtn').addEventListener('click', () => {
   hud.hideOverlay();
   setupMatch(state.me ? state.me.name : 'Speler');
 });
+
+document.getElementById('menubtn').addEventListener('click', () => {
+  document.getElementById('endpanel').classList.add('hidden');
+  document.getElementById('startpanel').classList.remove('hidden');
+});
+
+// map-keuze in het startscherm
+for (const btn of document.querySelectorAll('.mapbtn')) {
+  if (btn.dataset.map === state.mapId) btn.classList.add('selected');
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mapbtn').forEach((b) => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    state.mapId = btn.dataset.map;
+    localStorage.setItem('sk_map', state.mapId);
+    // meteen tonen op de achtergrond van het startscherm
+    if (state.builtMapId !== state.mapId) {
+      mapCfg = buildMap(scene, state.mapId);
+      state.builtMapId = state.mapId;
+      items.setBoxes(itemBoxSpots, mapCfg.boxStyle);
+    }
+  });
+}
+
+// ---------- koppel-API voor het hoofdspel ----------
+// Het omliggende spel kan hiermee per speler een gezichtsfoto inladen.
+// Bronnen: url-string, HTMLImageElement of Canvas.
+window.KartGame = {
+  setPlayerFace(source) {
+    if (state.me) setKartFace(state.me, source);
+  },
+  setFaceByName(name, source) {
+    const k = state.karts.find((q) => q.name === name);
+    if (k) setKartFace(k, source);
+  },
+  listDrivers() {
+    return state.karts.map((k) => ({ name: k.name, isBot: k.isBot }));
+  },
+};
 
 document.getElementById('mute').addEventListener('click', (e) => {
   setMuted(!isMuted());
